@@ -65,6 +65,44 @@ def fix_unused_arguments():
             outfile.write(b"\n".join(current_lines))
 
 
+def fix_unused_loop_variables():
+    """Replace unused loop variables with _"""
+    unused_loopvars = get_luacheck_errors("213")
+    current_file_path = None
+    current_lines = None
+    for file_path, problem_row, problem_col, message in reversed(unused_loopvars):
+        if b"unused loop variable" not in message:
+            print(f"Could not decode unused loop variable name: {message}")
+            continue
+        if current_file_path != file_path:
+            if current_file_path is not None:
+                with open(current_file_path, "wb") as outfile:
+                    outfile.write(b"\n".join(current_lines))
+            current_file_path = file_path
+            with open(current_file_path, "rb") as infile:
+                current_lines = infile.read().split(b"\n")
+        param_name = message[len(b"unused loop variable '") : -1]
+        problem_line = current_lines[problem_row].decode("utf-8")
+        before_param = problem_line[:problem_col]
+        after_param = problem_line[problem_col + len(param_name) :]
+        # ~ print(f"problem_line: {problem_line}")
+        # ~ print(f"before_param: '{before_param}', after_param: '{after_param}'")
+        is_removable_param = (
+            before_param.rstrip()[-1] == "," and after_param.lstrip()[0] != ","
+        )
+        if is_removable_param:
+            # Remove the parameter
+            before_param = before_param.rstrip()[:-1]
+            new_line = before_param + after_param
+        else:
+            # Replace the parameter with _
+            new_line = before_param + "_" + after_param
+        current_lines[problem_row] = new_line.encode()
+    if current_file_path is not None:
+        with open(current_file_path, "wb") as outfile:
+            outfile.write(b"\n".join(current_lines))
+
+
 def fix_tab_after_space():
     """Replace spaces with tabs in indentations if both are used at once"""
     spacing_errors = get_luacheck_errors("621")
@@ -87,9 +125,6 @@ def fix_tab_after_space():
         indent = "\t" * (indent_length // 4) + " " * (indent_length % 4)
         new_line = indent + after_indent
         current_lines[problem_row] = new_line.encode()
-        print(problem_line)
-        print(new_line)
-        # ~ print(f'"{indent}" "{after_indent}"')
 
     if current_file_path is not None:
         with open(current_file_path, "wb") as outfile:
@@ -98,6 +133,7 @@ def fix_tab_after_space():
 
 def main():
     fix_unused_arguments()
+    fix_unused_loop_variables()
     fix_tab_after_space()
 
 
